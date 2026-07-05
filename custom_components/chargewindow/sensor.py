@@ -104,6 +104,21 @@ class CurrentPriceSensor(ChargeWindowEntity, SensorEntity):
             "currency": data.get("currency"),
             "generated_at_utc": data.get("generatedAtUtc"),
             "is_cheap_now": data.get("isCheapNow"),
+            # Richer attributes so the card can read everything from this one
+            # entity. All pulled safely from the coordinator data; any missing
+            # field surfaces as None rather than raising.
+            "savings_vs_now_percent": _get(
+                data, "savingsVsChargingNow", "percent"
+            ),
+            "savings_vs_now_absolute": _get(
+                data, "savingsVsChargingNow", "absolute"
+            ),
+            "co2_intensity": data.get("co2IntensityNow"),
+            "cheapest_window_start": _get(data, "cheapestWindow", "startLocal"),
+            "cheapest_window_end": _get(data, "cheapestWindow", "endLocal"),
+            "cheapest_window_avg_price": _get(
+                data, "cheapestWindow", "avgPrice"
+            ),
             "hours": data.get("hours") or [],
         }
 

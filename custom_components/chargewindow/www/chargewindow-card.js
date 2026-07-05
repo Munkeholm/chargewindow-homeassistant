@@ -6,14 +6,19 @@
  *
  * Config:
  *   type: custom:chargewindow-card
- *   entity: sensor.chargewindow_current_price   # carries the `hours` attribute
- *   title: ChargeWindow                          # optional
+ *   entity: sensor.chargewindow_dk2_current_price   # carries the `hours` attribute
+ *   title: ChargeWindow                             # optional
  *
  * The sensor's attributes are expected to contain:
  *   area, currency, generated_at_utc, is_cheap_now,
+ *   savings_vs_now_percent, savings_vs_now_absolute, co2_intensity,
+ *   cheapest_window_start, cheapest_window_end, cheapest_window_avg_price,
  *   hours: [ { hourLocal, priceAllIn, isPast, isCheap }, ... ]
+ *
+ * Everything the card needs is read from this ONE entity.
  */
 
+const CW_VERSION = "0.3.0";
 const CW_GREEN = "#1fbf4b";
 
 class ChargeWindowCard extends HTMLElement {
@@ -37,8 +42,23 @@ class ChargeWindowCard extends HTMLElement {
     return document.createElement("hui-generic-entity-row");
   }
 
-  static getStubConfig() {
-    return { entity: "sensor.chargewindow_current_price", title: "ChargeWindow" };
+  /**
+   * Auto-select the correct entity when the user first adds the card.
+   * Prefers an area-suffixed id (e.g. sensor.chargewindow_dk2_current_price),
+   * falling back to the plain sensor.chargewindow_current_price.
+   */
+  static getStubConfig(hass) {
+    let entity = "sensor.chargewindow_current_price";
+    if (hass && hass.states) {
+      const re = /^sensor\.chargewindow_.*_current_price$/;
+      const match = Object.keys(hass.states).find((id) => re.test(id));
+      if (match) {
+        entity = match;
+      } else if (hass.states["sensor.chargewindow_current_price"]) {
+        entity = "sensor.chargewindow_current_price";
+      }
+    }
+    return { entity, title: "ChargeWindow" };
   }
 
   _fmt(value, digits = 2) {
@@ -46,11 +66,23 @@ class ChargeWindowCard extends HTMLElement {
     return Number(value).toFixed(digits);
   }
 
+  _isNum(value) {
+    return value !== null && value !== undefined && !isNaN(Number(value));
+  }
+
   _fmtTime(iso) {
     if (!iso) return "–";
     const d = new Date(iso);
     if (isNaN(d.getTime())) return String(iso);
     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+
+  _fmtHour(iso) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return String(iso);
+    const hh = String(d.getHours()).padStart(2, "0");
+    return `${hh}:00`;
   }
 
   _shell(inner) {
@@ -78,7 +110,7 @@ class ChargeWindowCard extends HTMLElement {
 
     if (!stateObj) {
       this.innerHTML = this._shell(
-        `<div class="cw-msg">Entity <code>${this._escape(entityId)}</code> not found.</div>`
+        `<div class="cw-msg">Entity <code>${this._escape(entityId)}</code> not found. Waiting for data…</div>`
       );
       return;
     }
@@ -90,28 +122,49 @@ class ChargeWindowCard extends HTMLElement {
 
     if (hours.length === 0) {
       this.innerHTML = this._shell(
-        `<div class="cw-msg">No hourly price data available yet.</div>`
+        `<div class="cw-msg">Waiting for hourly price data…</div>`
       );
       return;
     }
 
-    // Header figures.
+    // Everything the header needs now lives on the current_price entity.
     const currentPrice = stateObj.state;
-    const cheapStart = attrs.cheapest_window_start;
-    const cheapEnd = attrs.cheapest_window_end;
+    const savingsPercent = attrs.savings_vs_now_percent;
+    const savingsAbsolute = attrs.savings_vs_now_absolute;
+    const windowStart = attrs.cheapest_window_start;
+    const windowEnd = attrs.cheapest_window_end;
+    const windowAvg = attrs.cheapest_window_avg_price;
+    const co2 = attrs.co2_intensity;
 
-    // Read companion sensors for the richer header, if present.
-    const savingsSensor = this._findCompanion("savings_vs_now");
-    const startSensor = this._findCompanion("cheapest_window_start");
-    const endSensor = this._findCompanion("cheapest_window_end");
+    const hasSavings = this._isNum(savingsPercent);
+    const savingsBlock = hasSavings
+      ? `
+        <div class="cw-metric cw-savings">
+          <div class="cw-metric-label">vs charging now</div>
+          <div class="cw-metric-value cw-savings-value">&minus;${this._fmt(
+            Math.abs(Number(savingsPercent)),
+            0
+          )}%</div>
+          ${
+            this._isNum(savingsAbsolute)
+              ? `<div class="cw-metric-sub">${this._fmt(
+                  Math.abs(Number(savingsAbsolute))
+                )} ${this._escape(unit)}</div>`
+              : ""
+          }
+        </div>`
+      : "";
 
-    const savingsPercent =
-      savingsSensor && savingsSensor.attributes
-        ? savingsSensor.attributes.percent
-        : null;
+    const windowAvgSub = this._isNum(windowAvg)
+      ? `<div class="cw-metric-sub">avg ${this._fmt(windowAvg)} ${this._escape(unit)}</div>`
+      : "";
 
-    const windowStart = startSensor ? startSensor.state : cheapStart;
-    const windowEnd = endSensor ? endSensor.state : cheapEnd;
+    const co2Chip = this._isNum(co2)
+      ? `<div class="cw-co2-chip" title="Current grid CO₂ intensity">${this._fmt(
+          co2,
+          0
+        )} gCO₂/kWh</div>`
+      : "";
 
     const header = `
       <div class="cw-header">
@@ -122,32 +175,15 @@ class ChargeWindowCard extends HTMLElement {
         <div class="cw-metric">
           <div class="cw-metric-label">Cheapest window</div>
           <div class="cw-metric-value">${this._fmtTime(windowStart)}&ndash;${this._fmtTime(windowEnd)}</div>
+          ${windowAvgSub}
         </div>
-        <div class="cw-metric cw-savings ${savingsPercent ? "on" : ""}">
-          <div class="cw-metric-label">vs charging now</div>
-          <div class="cw-metric-value">${
-            savingsPercent === null || savingsPercent === undefined
-              ? "–"
-              : "&minus;" + this._fmt(savingsPercent, 0) + "%"
-          }</div>
-        </div>
+        ${savingsBlock}
       </div>
+      ${co2Chip}
     `;
 
     this.innerHTML = this._shell(header + `<div class="cw-chart"></div>`);
     this._drawChart(hours, unit);
-  }
-
-  _findCompanion(suffix) {
-    // Derive sibling entity id by swapping the object_id suffix.
-    const entityId = this._config.entity;
-    const dot = entityId.indexOf(".");
-    if (dot < 0) return null;
-    const objectId = entityId.slice(dot + 1);
-    // e.g. chargewindow_current_price -> chargewindow_<suffix>
-    const prefix = objectId.replace(/current_price$/, "");
-    const candidate = `sensor.${prefix}${suffix}`;
-    return this._hass.states[candidate] || null;
   }
 
   _drawChart(hours, unit) {
@@ -192,8 +228,12 @@ class ChargeWindowCard extends HTMLElement {
       let cls = "cw-bar-upcoming";
       if (h.isCheap) cls = "cw-bar-cheap";
       else if (h.isPast) cls = "cw-bar-past";
-      const label = `${this._fmtTime(h.hourLocal)} · ${this._fmt(price)} ${this._escape(unit)}`;
-      bars += `<rect class="${cls}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${hgt.toFixed(1)}" rx="1.5"><title>${label}</title></rect>`;
+      // Hover tooltip: HH:00, price, and past / cheapest-window status.
+      let note = "";
+      if (h.isCheap) note = " · cheapest window";
+      else if (h.isPast) note = " · past";
+      const label = `${this._fmtHour(h.hourLocal)} — ${this._fmt(price)} ${unit}${note}`;
+      bars += `<rect class="${cls}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${hgt.toFixed(1)}" rx="1.5"><title>${this._escape(label)}</title></rect>`;
     });
 
     // "Now" marker at the past/upcoming boundary.
@@ -238,7 +278,7 @@ class ChargeWindowCard extends HTMLElement {
         .cw-msg code { font-family: monospace; }
         .cw-header {
           display: flex; flex-wrap: wrap; gap: 16px;
-          padding: 4px 0 14px;
+          padding: 4px 0 10px;
         }
         .cw-metric { flex: 1 1 30%; min-width: 90px; }
         .cw-metric-label {
@@ -249,13 +289,27 @@ class ChargeWindowCard extends HTMLElement {
           font-size: 1.35rem; font-weight: 600;
           color: var(--primary-text-color);
         }
+        .cw-metric-sub {
+          font-size: 0.78rem; color: var(--secondary-text-color); margin-top: 1px;
+        }
         .cw-unit { font-size: 0.8rem; font-weight: 400; color: var(--secondary-text-color); }
-        .cw-savings.on .cw-metric-value { color: ${CW_GREEN}; }
+        .cw-savings-value { color: ${CW_GREEN}; }
+        .cw-co2-chip {
+          display: inline-block; margin: 0 0 12px;
+          padding: 3px 10px; border-radius: 999px;
+          font-size: 0.75rem; font-weight: 500;
+          color: var(--secondary-text-color);
+          background: color-mix(in srgb, var(--secondary-text-color) 14%, transparent);
+          border: 1px solid var(--divider-color);
+        }
         .cw-chart { width: 100%; }
         .cw-svg { width: 100%; height: 220px; display: block; }
+        /* PAST: muted, low emphasis — reads in both light & dark. */
         .cw-bar-past { fill: var(--disabled-text-color, #9e9e9e); opacity: 0.35; }
-        .cw-bar-upcoming { fill: var(--primary-color, #03a9f4); opacity: 0.85; }
-        .cw-bar-cheap { fill: ${CW_GREEN}; }
+        /* UPCOMING: neutral mid emphasis via secondary text color. */
+        .cw-bar-upcoming { fill: var(--secondary-text-color, #6b7280); opacity: 0.55; }
+        /* CHEAPEST WINDOW: bold brand green = "charge here". */
+        .cw-bar-cheap { fill: ${CW_GREEN}; opacity: 1; }
         .cw-now-line {
           stroke: var(--primary-text-color); stroke-width: 1.5;
           stroke-dasharray: 3 3; opacity: 0.7;
@@ -273,26 +327,32 @@ class ChargeWindowCard extends HTMLElement {
           border-radius: 2px; margin-right: 5px; vertical-align: middle;
         }
         .cw-legend .dot.past { background: var(--disabled-text-color, #9e9e9e); opacity: 0.5; }
-        .cw-legend .dot.upcoming { background: var(--primary-color, #03a9f4); }
+        .cw-legend .dot.upcoming { background: var(--secondary-text-color, #6b7280); opacity: 0.55; }
         .cw-legend .dot.cheap { background: ${CW_GREEN}; }
       </style>
     `;
   }
 }
 
-customElements.define("chargewindow-card", ChargeWindowCard);
+// Idempotent registration: safe even if the module is loaded more than once
+// (e.g. bundled auto-register via add_extra_js_url AND a manual resource).
+if (!customElements.get("chargewindow-card")) {
+  customElements.define("chargewindow-card", ChargeWindowCard);
+}
 
 window.customCards = window.customCards || [];
-window.customCards.push({
-  type: "chargewindow-card",
-  name: "ChargeWindow Card",
-  description: "Calculator-style electricity price bar graph for ChargeWindow.",
-  preview: false,
-});
+if (!window.customCards.some((c) => c && c.type === "chargewindow-card")) {
+  window.customCards.push({
+    type: "chargewindow-card",
+    name: "ChargeWindow Card",
+    description: "Calculator-style electricity price bar graph for ChargeWindow.",
+    preview: false,
+  });
+}
 
 // eslint-disable-next-line no-console
 console.info(
-  "%c CHARGEWINDOW-CARD %c 0.1.0 ",
+  `%c CHARGEWINDOW-CARD %c ${CW_VERSION} `,
   `background:${CW_GREEN};color:#fff;font-weight:700;border-radius:3px 0 0 3px;padding:2px 4px;`,
   "background:#222;color:#fff;border-radius:0 3px 3px 0;padding:2px 4px;"
 );

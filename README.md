@@ -111,16 +111,29 @@ title: ChargeWindow
 
 The card renders a calculator-style bar graph of the hourly price series:
 
-- **Past** hours are muted,
-- **upcoming** hours use the accent color,
-- the **cheapest window** hours are green (ChargeWindow green `#1fbf4b`),
+- **Past** hours are muted (low emphasis),
+- **upcoming** hours are a neutral mid-emphasis slate,
+- the **cheapest window** hours are bold green (ChargeWindow green `#1fbf4b`) —
+  the "charge here" signal,
 - a dashed **"now"** marker sits at the past/upcoming boundary,
-- the header shows the current price, the cheapest window (start–end), and the
-  "−X% vs charging now" savings figure.
+- hovering any bar shows a tooltip with its hour (`HH:00`), price, and whether
+  it is past or in the cheapest window.
 
-The card is dependency-free vanilla JS, responsive, and reads everything from
-the single `current_price` sensor's attributes (falling back to companion
-sensors for the header where available).
+**Header stats:** the current all-in price, the cheapest window (start–end) with
+its **average price**, a prominent green **"−X% vs charging now"** savings figure
+with the absolute saving as a sub-label (hidden gracefully when unavailable),
+and a small **CO₂ chip** (e.g. `29 gCO₂/kWh`) when the backend provides it.
+
+**Theming:** the card is fully theme-aware and reads correctly in **both light
+and dark** HA themes — it inherits `ha-card` styling and uses HA CSS variables
+(`--primary-text-color`, `--secondary-text-color`, `--divider-color`,
+`--disabled-text-color`) rather than hardcoded colors. Only the brand green is
+fixed.
+
+The card is dependency-free vanilla JS, responsive, and reads **everything** —
+header stats and hourly series — from the single `current_price` sensor's
+attributes. When you add the card it auto-selects the correct area-suffixed
+entity (e.g. `sensor.chargewindow_dk2_current_price`).
 
 ---
 
