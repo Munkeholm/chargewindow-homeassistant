@@ -21,6 +21,11 @@ from .entity import ChargeWindowEntity
 
 _LOGGER = logging.getLogger(__name__)
 
+# The API returns naive local datetimes for the Nordic bidding zones, which all
+# observe Central European (Copenhagen) time. Attach that zone explicitly so the
+# resulting timestamps are correct regardless of the HA instance's own timezone.
+_API_TZ = dt_util.get_time_zone("Europe/Copenhagen")
+
 
 def _get(data: dict[str, Any], *path: str) -> Any:
     """Safely walk a nested dict; return None if any key missing/None."""
@@ -42,9 +47,14 @@ def _parse_dt(value: Any) -> datetime | None:
     if parsed is None:
         return None
     if parsed.tzinfo is None:
-        # Local datetimes from the API are in the area's local time; assume HA local.
-        parsed = dt_util.as_local(parsed)
-    return parsed
+        # Naive datetimes from the API are in the area's local (Copenhagen) time.
+        # Stamp that zone explicitly, then normalise so the value is always
+        # timezone-aware as SensorDeviceClass.TIMESTAMP requires.
+        if _API_TZ is not None:
+            parsed = parsed.replace(tzinfo=_API_TZ)
+        else:  # pragma: no cover - tz database should always be present
+            parsed = dt_util.as_local(parsed)
+    return dt_util.as_utc(parsed)
 
 
 async def async_setup_entry(
