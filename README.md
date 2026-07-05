@@ -8,9 +8,11 @@ current electricity price, the cheapest upcoming charging window, projected
 savings, grid CO2 intensity, and an hourly price series you can plot with the
 included custom card.
 
-> **Status:** initial release (`0.1.0`). The Python and JS are written to the
-> documented backend contract; end-to-end validation against a live Home
-> Assistant instance is the next step.
+> **Status:** release (`0.2.0`). The card now ships *inside* the integration and
+> is auto-registered — a single HACS install of the integration delivers the
+> card too, with no manual dashboard-resource step. The Python and JS are
+> written to the documented backend contract; end-to-end validation against a
+> live Home Assistant instance is the next step.
 
 ---
 
@@ -66,20 +68,17 @@ Production `base_url` is `https://chargewindow.eu`. Supported areas:
 3. Install **ChargeWindow**, then restart Home Assistant and add the
    integration as above.
 
-### 2. Custom Lovelace card
+### 2. Custom Lovelace card — no extra step
 
-The card ships in the same repo at `www/chargewindow-card.js`.
+The card is **bundled with the integration** and **auto-registered**. When the
+integration is installed and set up, it serves the card over HTTP and loads it
+into the frontend for you (served at `/chargewindow/chargewindow-card.js`,
+cache-busted by the integration version).
 
-1. Copy `www/chargewindow-card.js` into your Home Assistant `config/www/`
-   directory (so it is served at `/local/chargewindow-card.js`).
-2. Register it as a dashboard resource: **Settings → Dashboards →
-   three-dot menu → Resources → Add resource**
-   - URL: `/local/chargewindow-card.js`
-   - Type: **JavaScript module**
-3. (Optional, via HACS) HACS supports either an integration *or* a plugin per
-   default-store repo, so add this repo as a **custom repository** with category
-   **Plugin** if you prefer HACS to manage the card. Manual install above works
-   regardless.
+**You do NOT need to add a dashboard resource.** Just [add the card to a
+dashboard](#adding-the-card-to-a-dashboard) once at least one config entry is
+set up. (If the card type isn't recognized right after first setup, reload the
+dashboard / clear the browser cache.)
 
 ---
 
@@ -101,7 +100,8 @@ zones side by side.
 
 ## Adding the card to a dashboard
 
-Once the resource is registered, add a manual card:
+The card module is auto-registered by the integration, so you can add a manual
+card directly (no Resources entry needed):
 
 ```yaml
 type: custom:chargewindow-card
