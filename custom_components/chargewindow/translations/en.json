@@ -1,0 +1,47 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "ChargeWindow",
+        "description": "Connect to your ChargeWindow instance to fetch price windows and charging insights.",
+        "data": {
+          "base_url": "Base URL",
+          "area": "Bidding zone / area",
+          "currency": "Currency",
+          "scan_interval": "Update interval (minutes)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect. Check the base URL, area and currency and try again.",
+      "unknown": "An unexpected error occurred."
+    },
+    "abort": {
+      "already_configured": "This area is already configured for this ChargeWindow instance."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "ChargeWindow options",
+        "data": {
+          "scan_interval": "Update interval (minutes)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "current_price": { "name": "Current price" },
+      "spot_price": { "name": "Spot price" },
+      "cheapest_window_start": { "name": "Cheapest window start" },
+      "cheapest_window_end": { "name": "Cheapest window end" },
+      "cheapest_window_avg_price": { "name": "Cheapest window average price" },
+      "savings_vs_now": { "name": "Savings vs charging now" },
+      "co2_intensity": { "name": "CO2 intensity" }
+    },
+    "binary_sensor": {
+      "is_cheap_now": { "name": "Cheap now" }
+    }
+  }
+}
