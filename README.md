@@ -8,7 +8,7 @@ current electricity price, the cheapest upcoming charging window, projected
 savings, grid CO2 intensity, and an hourly price series you can plot with the
 included custom card.
 
-> **Status:** release candidate (`0.4.0`). The card ships *inside* the integration and
+> **Status:** current release (`0.4.1`). The card ships *inside* the integration and
 > is auto-registered — a single HACS install of the integration delivers the
 > card too, with no manual dashboard-resource step. The Python and JS are
 > covered by config-flow, response-model, and entity setup tests against the
