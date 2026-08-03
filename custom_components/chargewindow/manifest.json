@@ -1,6 +1,7 @@
 {
   "domain": "chargewindow",
   "name": "ChargeWindow",
+  "after_dependencies": ["frontend", "http"],
   "codeowners": ["@Munkeholm"],
   "config_flow": true,
   "documentation": "https://github.com/Munkeholm/chargewindow-homeassistant",
