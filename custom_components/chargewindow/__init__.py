@@ -11,6 +11,8 @@ from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from homeassistant.loader import async_get_integration
 
 from .const import (
@@ -68,7 +70,7 @@ async def _async_register_frontend(hass: HomeAssistant) -> None:
     try:
         integration = await async_get_integration(hass, DOMAIN)
         version = integration.version or "0"
-    except Exception:  # noqa: BLE001 - version is best-effort only
+    except Exception:
         _LOGGER.debug("Could not resolve integration version for cache-busting")
 
     add_extra_js_url(hass, f"{CARD_URL_PATH}?v={version}")
@@ -88,6 +90,7 @@ async def async_setup_entry(
 
     coordinator = ChargeWindowCoordinator(
         hass,
+        entry,
         base_url=entry.data.get(CONF_BASE_URL, DEFAULT_BASE_URL),
         area=entry.data.get(CONF_AREA, DEFAULT_AREA),
         currency=entry.data.get(CONF_CURRENCY, DEFAULT_CURRENCY),
@@ -102,6 +105,35 @@ async def async_setup_entry(
 
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
+    return True
+
+
+async def async_migrate_entry(
+    hass: HomeAssistant, entry: ChargeWindowConfigEntry
+) -> bool:
+    """Migrate entity unique IDs from config-entry IDs to stable service IDs."""
+    if entry.version >= 2:
+        return True
+
+    stable_entry_id = entry.unique_id or entry.entry_id
+    registry = er.async_get(hass)
+    for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
+        old_prefix = f"{entry.entry_id}_"
+        if entity.unique_id.startswith(old_prefix):
+            registry.async_update_entity(
+                entity.entity_id,
+                new_unique_id=f"{stable_entry_id}_{entity.unique_id.removeprefix(old_prefix)}",
+            )
+
+    device_registry = dr.async_get(hass)
+    if device := device_registry.async_get_device(
+        identifiers={(DOMAIN, entry.entry_id)}
+    ):
+        device_registry.async_update_device(
+            device.id, new_identifiers={(DOMAIN, stable_entry_id)}
+        )
+
+    hass.config_entries.async_update_entry(entry, version=2)
     return True
 
 

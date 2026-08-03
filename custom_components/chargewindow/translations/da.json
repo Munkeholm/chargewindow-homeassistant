@@ -1,0 +1,47 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "ChargeWindow",
+        "description": "Forbind til ChargeWindow for at hente priser og anbefalede ladevinduer.",
+        "data": {
+          "base_url": "Basis-URL",
+          "area": "Prisområde",
+          "currency": "Valuta",
+          "scan_interval": "Opdateringsinterval (minutter)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Forbindelsen mislykkedes. Kontrollér URL, prisområde og valuta.",
+      "unknown": "Der opstod en uventet fejl."
+    },
+    "abort": {
+      "already_configured": "Dette prisområde er allerede konfigureret for denne ChargeWindow-instans."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "ChargeWindow-indstillinger",
+        "data": {
+          "scan_interval": "Opdateringsinterval (minutter)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "current_price": { "name": "Aktuel pris" },
+      "spot_price": { "name": "Spotpris" },
+      "cheapest_window_start": { "name": "Billigste vindue starter" },
+      "cheapest_window_end": { "name": "Billigste vindue slutter" },
+      "cheapest_window_avg_price": { "name": "Gennemsnitspris i billigste vindue" },
+      "savings_vs_now": { "name": "Besparelse sammenlignet med nu" },
+      "co2_intensity": { "name": "CO2-intensitet" }
+    },
+    "binary_sensor": {
+      "next_hour_is_cheap": { "name": "Næste time er i billigste vindue" }
+    }
+  }
+}

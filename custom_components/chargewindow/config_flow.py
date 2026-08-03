@@ -2,20 +2,18 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any
+from urllib.parse import urlparse
 
-import aiohttp
 import voluptuous as vol
-
 from homeassistant.config_entries import (
     ConfigEntry,
     ConfigFlow,
     ConfigFlowResult,
     OptionsFlow,
 )
-from homeassistant.core import callback
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
     NumberSelector,
@@ -26,8 +24,8 @@ from homeassistant.helpers.selector import (
     SelectSelectorMode,
 )
 
+from .api import ChargeWindowApiClient, ChargeWindowApiError
 from .const import (
-    API_PATH,
     CONF_AREA,
     CONF_BASE_URL,
     CONF_CURRENCY,
@@ -39,33 +37,36 @@ from .const import (
     DOMAIN,
     MAX_SCAN_INTERVAL_MINUTES,
     MIN_SCAN_INTERVAL_MINUTES,
-    REQUEST_TIMEOUT,
     SUPPORTED_AREAS,
+    SUPPORTED_CURRENCIES,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
 
 async def _validate_connection(
-    hass, base_url: str, area: str, currency: str
+    hass: HomeAssistant, base_url: str, area: str, currency: str
 ) -> None:
     """Make one test call to the endpoint; raise on failure."""
-    session = async_get_clientsession(hass)
-    url = f"{base_url.rstrip('/')}{API_PATH}"
-    params = {"area": area, "currency": currency}
-    async with asyncio.timeout(REQUEST_TIMEOUT):
-        response = await session.get(url, params=params)
-        if response.status != 200:
-            raise CannotConnect(f"HTTP {response.status}")
-        data = await response.json()
-    if not isinstance(data, dict):
-        raise CannotConnect("Unexpected payload")
+    parsed_url = urlparse(base_url)
+    if parsed_url.scheme not in {"http", "https"} or not parsed_url.netloc:
+        raise CannotConnect("Base URL must be an absolute HTTP(S) URL")
+    client = ChargeWindowApiClient(
+        async_get_clientsession(hass),
+        base_url=base_url,
+        area=area,
+        currency=currency,
+    )
+    try:
+        await client.async_get_state()
+    except ChargeWindowApiError as err:
+        raise CannotConnect from err
 
 
 class ChargeWindowConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for ChargeWindow."""
 
-    VERSION = 1
+    VERSION = 2
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -85,9 +86,7 @@ class ChargeWindowConfigFlow(ConfigFlow, domain=DOMAIN):
                 await _validate_connection(self.hass, base_url, area, currency)
             except CannotConnect:
                 errors["base"] = "cannot_connect"
-            except (aiohttp.ClientError, TimeoutError):
-                errors["base"] = "cannot_connect"
-            except Exception:  # noqa: BLE001
+            except Exception:
                 _LOGGER.exception("Unexpected error validating ChargeWindow")
                 errors["base"] = "unknown"
             else:
@@ -97,9 +96,7 @@ class ChargeWindowConfigFlow(ConfigFlow, domain=DOMAIN):
                         CONF_BASE_URL: base_url,
                         CONF_AREA: area,
                         CONF_CURRENCY: currency,
-                        CONF_SCAN_INTERVAL: int(
-                            user_input[CONF_SCAN_INTERVAL]
-                        ),
+                        CONF_SCAN_INTERVAL: int(user_input[CONF_SCAN_INTERVAL]),
                     },
                 )
 
@@ -121,7 +118,12 @@ class ChargeWindowConfigFlow(ConfigFlow, domain=DOMAIN):
                 vol.Required(
                     CONF_CURRENCY,
                     default=(user_input or {}).get(CONF_CURRENCY, DEFAULT_CURRENCY),
-                ): str,
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=SUPPORTED_CURRENCIES,
+                        mode=SelectSelectorMode.DROPDOWN,
+                    )
+                ),
                 vol.Required(
                     CONF_SCAN_INTERVAL,
                     default=(user_input or {}).get(
@@ -173,9 +175,7 @@ class ChargeWindowOptionsFlow(OptionsFlow):
 
         data_schema = vol.Schema(
             {
-                vol.Required(
-                    CONF_SCAN_INTERVAL, default=current
-                ): NumberSelector(
+                vol.Required(CONF_SCAN_INTERVAL, default=current): NumberSelector(
                     NumberSelectorConfig(
                         min=MIN_SCAN_INTERVAL_MINUTES,
                         max=MAX_SCAN_INTERVAL_MINUTES,

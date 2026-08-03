@@ -41,7 +41,7 @@
       "co2_intensity": { "name": "CO2 intensity" }
     },
     "binary_sensor": {
-      "is_cheap_now": { "name": "Cheap now" }
+      "next_hour_is_cheap": { "name": "Next hour is in cheapest window" }
     }
   }
 }
