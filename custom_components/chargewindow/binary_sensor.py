@@ -20,13 +20,13 @@ async def async_setup_entry(
 ) -> None:
     """Set up ChargeWindow binary sensors."""
     coordinator = entry.runtime_data
-    async_add_entities([IsCheapNowBinarySensor(coordinator)])
+    async_add_entities([NextHourIsCheapBinarySensor(coordinator)])
 
 
-class IsCheapNowBinarySensor(ChargeWindowEntity, BinarySensorEntity):
-    """True when charging now is currently considered cheap."""
+class NextHourIsCheapBinarySensor(ChargeWindowEntity, BinarySensorEntity):
+    """True when the next whole hour belongs to the cheapest window."""
 
-    _attr_translation_key = "is_cheap_now"
+    _attr_translation_key = "next_hour_is_cheap"
     _attr_icon = "mdi:flash"
 
     def __init__(self, coordinator: ChargeWindowCoordinator) -> None:
@@ -34,15 +34,15 @@ class IsCheapNowBinarySensor(ChargeWindowEntity, BinarySensorEntity):
 
     @property
     def is_on(self) -> bool | None:
-        value = self._data.get("isCheapNow")
-        if value is None:
-            return None
-        return bool(value)
+        return self.coordinator.data.next_hour_is_cheap
 
     @property
     def available(self) -> bool:
-        return super().available and self._data.get("isCheapNow") is not None
+        return (
+            super().available and self.coordinator.data.next_hour_is_cheap is not None
+        )
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        return {"generated_at_utc": self._data.get("generatedAtUtc")}
+        generated = self.coordinator.data.generated_at_utc
+        return {"generated_at_utc": generated.isoformat() if generated else None}

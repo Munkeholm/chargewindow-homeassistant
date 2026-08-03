@@ -8,11 +8,11 @@ current electricity price, the cheapest upcoming charging window, projected
 savings, grid CO2 intensity, and an hourly price series you can plot with the
 included custom card.
 
-> **Status:** release (`0.2.0`). The card now ships *inside* the integration and
+> **Status:** release candidate (`0.4.0`). The card ships *inside* the integration and
 > is auto-registered — a single HACS install of the integration delivers the
 > card too, with no manual dashboard-resource step. The Python and JS are
-> written to the documented backend contract; end-to-end validation against a
-> live Home Assistant instance is the next step.
+> covered by config-flow, response-model, and entity setup tests against the
+> Home Assistant test framework.
 
 ---
 
@@ -29,10 +29,14 @@ included custom card.
 | `sensor.chargewindow_cheapest_window_avg_price` | Average price across the cheapest window. |
 | `sensor.chargewindow_savings_vs_now` | Absolute savings vs charging now (attribute: `percent`). |
 | `sensor.chargewindow_co2_intensity` | Current grid CO2 intensity (`gCO2/kWh`), `unavailable` when the backend has no value. |
-| `binary_sensor.chargewindow_is_cheap_now` | `on` when charging right now is currently considered cheap. |
+| `binary_sensor.chargewindow_<area>_next_hour_is_in_cheapest_window` | `on` when the next whole hour belongs to the recommended window. The legacy backend field `isCheapNow` is interpreted with this more precise meaning. |
 
 All entities degrade gracefully to `unknown` / `unavailable` when a field is
 missing and never crash the update coordinator.
+
+`currency` always describes the effective unit of the returned values. If the
+backend cannot obtain an FX rate, it falls back coherently to DKK and exposes
+the originally requested unit as `requested_currency`.
 
 ### Backend endpoint
 
@@ -51,7 +55,9 @@ Production `base_url` is `https://chargewindow.eu`. Supported areas:
 
 ### 1. Integration (custom component)
 
-**Manual (recommended for now):**
+Requires Home Assistant `2025.12.0` or newer.
+
+**Manual:**
 
 1. Copy the `custom_components/chargewindow` folder into your Home Assistant
    `config/custom_components/` directory so you have
@@ -88,8 +94,8 @@ Setup is entirely UI-driven (config flow). You provide:
 
 - **Base URL** — default `https://chargewindow.eu`
 - **Area** — dropdown of supported bidding zones, default `DK2`
-- **Currency** — default `DKK`
-- **Update interval (minutes)** — default `5` (changeable later via the
+- **Currency** — `DKK`, `EUR`, `SEK`, or `NOK`; default `DKK`
+- **Update interval (minutes)** — default `15` (changeable later via the
   integration's **Configure** / options)
 
 Setup makes one test call to the endpoint and shows a friendly error if it
@@ -118,6 +124,7 @@ The card renders a calculator-style bar graph of the hourly price series:
 - a dashed **"now"** marker sits at the past/upcoming boundary,
 - hovering any bar shows a tooltip with its hour (`HH:00`), price, and whether
   it is past or in the cheapest window.
+- negative prices render below a visible zero line.
 
 **Header stats:** the current all-in price, the cheapest window (start–end) with
 its **average price**, a prominent green **"−X% vs charging now"** savings figure
@@ -139,23 +146,23 @@ entity (e.g. `sensor.chargewindow_dk2_current_price`).
 
 ## Example automations
 
-### 1. Notify when charging becomes cheap
+### 1. Notify when the next hour enters the recommended window
 
 ```yaml
-alias: Notify when charging is cheap
+alias: Notify before the cheapest charging window
 trigger:
   - platform: state
-    entity_id: binary_sensor.chargewindow_is_cheap_now
+    entity_id: binary_sensor.chargewindow_dk2_next_hour_is_in_cheapest_window
     to: "on"
 action:
   - service: notify.notify
     data:
       title: ChargeWindow
       message: >
-        Electricity is cheap right now
+        The next hour is part of ChargeWindow's recommended charging window
         ({{ states('sensor.chargewindow_current_price') }}
         {{ state_attr('sensor.chargewindow_current_price', 'currency') }}/kWh).
-        Good time to charge.
+        Prepare to charge at the next whole-hour boundary.
 mode: single
 ```
 
@@ -207,8 +214,25 @@ mode: single
 - No extra pip requirements — the integration uses Home Assistant's bundled
   `aiohttp` via `async_get_clientsession`, all I/O is async.
 - CI (`.github/workflows/validate.yml`) runs Home Assistant **hassfest** and the
-  **HACS** validation action (category `integration`).
+  **HACS** validation action, Ruff, the Home Assistant pytest suite, and a
+  JavaScript syntax check for the card.
+
+## Known limitations
+
+- The public endpoint currently optimizes a fixed three-hour contiguous window.
+- All supported Nordic bidding zones currently use Central European market time.
+- The integration recommends a window; it does not directly control a charger.
+
+## Troubleshooting and removal
+
+If entities are unavailable, open **Settings → Devices & services → ChargeWindow**
+and download diagnostics. Verify that the configured base URL is reachable from
+Home Assistant and that the selected area has published price data. Browser cache
+issues after a card upgrade can normally be resolved with a hard refresh.
+
+To remove ChargeWindow, delete its config entry under **Devices & services**, then
+uninstall the repository in HACS and restart Home Assistant.
 
 ## License
 
-See repository. Keep any secrets (tokens, personal URLs) out of committed YAML.
+ChargeWindow is released under the [MIT License](LICENSE).

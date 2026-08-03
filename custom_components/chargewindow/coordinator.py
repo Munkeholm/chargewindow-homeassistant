@@ -2,28 +2,27 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from datetime import timedelta
-from typing import Any
 
-import aiohttp
-
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import API_PATH, DOMAIN, REQUEST_TIMEOUT
+from .api import ChargeWindowApiClient, ChargeWindowApiError, ChargeWindowData
+from .const import API_PATH, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
 
-class ChargeWindowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
+class ChargeWindowCoordinator(DataUpdateCoordinator[ChargeWindowData]):
     """Coordinator that polls the ChargeWindow Home Assistant state endpoint."""
 
     def __init__(
         self,
         hass: HomeAssistant,
+        config_entry: ConfigEntry,
         *,
         base_url: str,
         area: str,
@@ -35,12 +34,19 @@ class ChargeWindowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             hass,
             _LOGGER,
             name=f"{DOMAIN}_{area}",
+            config_entry=config_entry,
             update_interval=scan_interval,
+            always_update=False,
         )
         self._base_url = base_url.rstrip("/")
         self._area = area
         self._currency = currency
-        self._session = async_get_clientsession(hass)
+        self._client = ChargeWindowApiClient(
+            async_get_clientsession(hass),
+            base_url=self._base_url,
+            area=area,
+            currency=currency,
+        )
 
     @property
     def url(self) -> str:
@@ -57,24 +63,9 @@ class ChargeWindowCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Return the configured currency."""
         return self._currency
 
-    async def _async_update_data(self) -> dict[str, Any]:
+    async def _async_update_data(self) -> ChargeWindowData:
         """Fetch the latest state from the ChargeWindow API."""
-        params = {"area": self._area, "currency": self._currency}
         try:
-            async with asyncio.timeout(REQUEST_TIMEOUT):
-                response = await self._session.get(self.url, params=params)
-                if response.status != 200:
-                    text = await response.text()
-                    raise UpdateFailed(
-                        f"ChargeWindow API returned HTTP {response.status}: {text[:200]}"
-                    )
-                data = await response.json()
-        except TimeoutError as err:
-            raise UpdateFailed("Timeout while contacting ChargeWindow API") from err
-        except aiohttp.ClientError as err:
-            raise UpdateFailed(f"Error contacting ChargeWindow API: {err}") from err
-
-        if not isinstance(data, dict):
-            raise UpdateFailed("Unexpected response payload from ChargeWindow API")
-
-        return data
+            return await self._client.async_get_state()
+        except ChargeWindowApiError as err:
+            raise UpdateFailed(str(err)) from err

@@ -16,8 +16,8 @@ CONF_SCAN_INTERVAL: Final = "scan_interval"
 DEFAULT_BASE_URL: Final = "https://chargewindow.eu"
 DEFAULT_AREA: Final = "DK2"
 DEFAULT_CURRENCY: Final = "DKK"
-DEFAULT_SCAN_INTERVAL_MINUTES: Final = 5
-MIN_SCAN_INTERVAL_MINUTES: Final = 1
+DEFAULT_SCAN_INTERVAL_MINUTES: Final = 15
+MIN_SCAN_INTERVAL_MINUTES: Final = 5
 MAX_SCAN_INTERVAL_MINUTES: Final = 60
 
 # Supported bidding zones / areas
@@ -34,6 +34,8 @@ SUPPORTED_AREAS: Final = [
     "NO4",
     "NO5",
 ]
+
+SUPPORTED_CURRENCIES: Final = ["DKK", "EUR", "SEK", "NOK"]
 
 # API
 API_PATH: Final = "/api/integrations/homeassistant/state"
